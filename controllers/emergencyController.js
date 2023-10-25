@@ -1,40 +1,46 @@
-const express = require('express');
-const axios = require('axios');
-const dotenv = require('dotenv')
-const { OpenAI } = require('openai');
+const { OpenAI } = require("openai");
+const prompts = require("../prompt/prompts")
 
-const apiKey = process.env.API_KEY; // Replace with your OpenAI API key
-const openai = new OpenAI({ apiKey:apiKey });
+const openai = new OpenAI({
+  apiKey: process.env.API_KEY,
+});
 
-const app = express();
-app.use(express.json());
-
-app.post('/emergency', async (req, res) => {
-  const userMessage = req.body.message;
-
-  // Format user input for the OpenAI API
-  const messages = [
-    { role: 'system', content: 'Your system message here...' },
-    { role: 'user', content: userMessage },
-  ];
-
+async function generateEmergencyContact(city) {
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages,
+    const prompt = `list 10 Emergency Contact Numbers in ${city} with their name and Phone number `;
+
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content:prompts.emergencyListPromptTemplate,
+        },
+        { role: "user", content: prompt },
+      ],
+      model: "gpt-3.5-turbo",
     });
 
-    // Extract the chatbot's response
-    const chatbotResponse = response.choices[0].message.content;
+    const emergencyList = completion.choices[0].message.content;
 
-    res.json({ response: chatbotResponse });
+    return emergencyList;
+
   } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ error: 'An error occurred' });
+    console.error("Error generating hospital data:", error);
+    throw error;
   }
-});
+}
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+exports.getEmergencyContacts = async (req, res) => {
+  try {
+    const {city} = req.body.city;
+
+    const contacts = await generateEmergencyContact(city);
+
+    console.log(contacts)
+
+    res.json({ contacts });
+  } catch (error) {
+    console.error("Error generating hospital data:", error);
+    res.status(500).json({ error: "An error occurred" });
+  }
+};

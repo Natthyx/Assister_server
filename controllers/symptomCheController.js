@@ -1,59 +1,38 @@
 const { OpenAI } = require("openai");
-const prompts = require("../prompt/prompts")
+const prompts = require("../prompt/prompts"); // Import your prompt module
 const openai = new OpenAI({
   apiKey: process.env.API_KEY,
 });
 
-// Function to extract numeric values from a string
-function extractNumericValues(str) {
-  const regex = /-?\d+(\.\d+)?/g;
-  const matches = str.match(regex);
-  return matches ? matches.map(parseFloat) : [];
-}
-// Function to extract hospital name from response
-function extractHospitalNameFromResponse(response) {
-  const regex = /H-name: \s*(.*)/i;
-  const match = response.match(regex);
-  return match ? match[1] : null;
-}
+const cache = {};
 
-// Function to generate a response from the ChatGPT API
 async function generateChatResponse(userSymptom) {
+  if (cache[userSymptom]) {
+    return cache[userSymptom];
+  }
   try {
     const completion = await openai.chat.completions.create({
       messages: [
-        {
-          role: "system",
-          content:prompts.symptomCheckerPromptTemplate},    
+        { role: "system", content: prompts.symptomCheckerPromptTemplate },
         { role: "user", content: userSymptom },
       ],
       model: "gpt-3.5-turbo",
-      temperature: 0.0,
     });
 
     const responseContent = completion.choices[0].message.content;
-    const responseParts = responseContent.split(/(Longitude|Latitude):\s+/i);
+    // Extract disease name, details, treatment, and recommendation from the response
+    const jsonResponse = JSON.parse(responseContent);
+    const { "Disease name": diseaseName, Details: details, Treatment: treatment, Recommendation: recommendation } = jsonResponse;
 
-
-
-    // Extract the longitude and latitude
-    let longitude;
-    let latitude;
-    let hospitalName;
-
-    if (responseParts.length >= 3) {
-      longitude = extractNumericValues(responseParts[2])[0];
-      latitude = extractNumericValues(responseParts[4])[0];
-      hospitalName = extractHospitalNameFromResponse(responseContent);
-    }
-
-    console.log(latitude," ", longitude, " ", hospitalName)
-    return {
-      response: responseContent,
-      longitude,
-      latitude,
-      hospitalName
+    // Cache the response
+    cache[userSymptom] = {
+      diseaseName,
+      details,
+      treatment,
+      recommendation
     };
+
+    return cache[userSymptom];
 
   } catch (error) {
     console.error("Error generating chat response:", error);
@@ -61,15 +40,13 @@ async function generateChatResponse(userSymptom) {
   }
 }
 
-// Controller function for symptom checker
 exports.checkSymptom = async (req, res) => {
   try {
-    const userSymptom = req.body.message;
+    const userSymptom = req.body.symptom;
 
-    // Generate a chat response based on the user's symptom
-    const { response, longitude, latitude , hospitalName } = await generateChatResponse(userSymptom);
+    const {diseaseName,details,treatment,recommendation} = await generateChatResponse(userSymptom);
 
-    res.json({ response, longitude, latitude , hospitalName });
+    res.json({ diseaseName,details,treatment,recommendation});
 
   } catch (error) {
     console.error("Error generating chat response:", error);
